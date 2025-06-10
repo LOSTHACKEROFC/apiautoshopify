@@ -1,8 +1,10 @@
 from flask import Flask, request, jsonify
 import asyncio
 from apisites.autoshop import find_product, autoshopify
+import logging
 
 app = Flask(__name__)
+logging.basicConfig(level=logging.INFO)
 
 @app.route('/auto.php')
 def auto_checkout():
@@ -19,49 +21,30 @@ def auto_checkout():
     except Exception as e:
         return jsonify({"error": f"Invalid card input: {str(e)}"}), 400
 
-    
-import logging
-logging.basicConfig(level=logging.INFO)
+    async def runner():
+        max_retries = 3
+        attempt = 0
+        while attempt < max_retries:
+            try:
+                logging.info(f"Attempt {attempt + 1} to fetch product and checkout.")
+                product = await find_product(domain)
+                if not product:
+                    return {"error": "No valid product found."}
 
-async def runner():
-    max_retries = 3
-    attempt = 0
-    while attempt < max_retries:
-        try:
-            logging.info(f"Attempt {attempt + 1} to fetch product and checkout.")
-            product = await find_product(domain)
-            if not product:
-                return {"error": "No valid product found."}
+                p_id, link = product
+                result = await autoshopify(None, link, fullz)
+                return {
+                    "card": fullz,
+                    "domain": domain,
+                    "status": "Success" if "charged" in str(result).lower() or "order" in str(result).lower() else "Failed",
+                    "response": result or "No response"
+                }
+            except Exception as e:
+                logging.warning(f"Attempt {attempt + 1} failed: {e}")
+                attempt += 1
+                await asyncio.sleep(2)
 
-            p_id, link = product
-            result = await autoshopify(None, link, fullz)
-            return {
-                "card": fullz,
-                "domain": domain,
-                "status": "Success" if "charged" in str(result).lower() or "order" in str(result).lower() else "Failed",
-                "response": result or "No response"
-            }
-        except Exception as e:
-            logging.warning(f"Attempt {attempt + 1} failed: {e}")
-            attempt += 1
-            await asyncio.sleep(2)  # short delay before retry
-    return {"error": "All attempts failed. Please try again with a different site or card."}
-
-        try:
-            product = await find_product(domain)
-            if not product:
-                return {"error": "No valid product found."}
-
-            p_id, link = product
-            result = await autoshopify(None, link, fullz)
-            return {
-                "card": fullz,
-                "domain": domain,
-                "status": "Success" if "charged" in str(result).lower() or "order" in str(result).lower() else "Failed",
-                "response": result or "No response"
-            }
-        except Exception as e:
-            return {"error": str(e)}
+        return {"error": "All attempts failed. Try another site or card."}
 
     output = asyncio.run(runner())
     return jsonify(output)
