@@ -1,4 +1,5 @@
 Flask
 aiohttp
 beautifulsoup4
+requests
 huepy
